@@ -74,3 +74,47 @@
 | --- | --- | --- |
 | AI (Claude Code) | Affine 식의 원소 단위 유도, `y_prob[np.arange(N), y_true]` 인덱싱, `-log`를 쓰는 이유 | 작은 배열로 직접 출력 비교, `pytest` Day 1 테스트 13개 통과, `selfcheck --day 1 --trace` |
 | 과제 docstring | Softmax 구현 순서 1~4, clip을 쓰는 이유 | `test_softmax_with_loss.py` forward 테스트 6개 통과 |
+
+---
+
+## Day 2 - 2026-11-27
+
+### 오늘 직접 구현한 것
+
+- `SoftmaxWithLoss.backward`: `y_prob` 복사본의 정답 칸(`[np.arange(N), y_true]`)에서 1을 빼고 N으로 나눔
+- `ReLU.backward`: forward에서 저장한 `mask` 위치의 `dout`을 0으로
+- `Affine.backward`: `dW = x.T @ dout`, `db = dout.sum(axis=0)`, `dx = dout @ W.T`
+
+### 오늘 확인한 shape와 수식
+
+- 큰 그림: 각 층은 `dout`(= ∂L/∂출력)을 받아 `dx`(= ∂L/∂입력)를 돌려준다. ∂L/∂입력 = ∂L/∂출력 × ∂출력/∂입력이라 각 층은 자기 국소 미분만 알면 된다
+- 입력/출력 shape:
+  - Softmax: `dx (N, C)`. L = −z_y + log Σ e^{z_j}를 z_k로 미분하면 p_k − t_k이고, forward에서 batch 평균을 냈으니 1/N이 곱해진다
+  - ReLU: 국소 미분은 x > 0이면 1, x ≤ 0이면 0. `dx`는 `dout`에서 mask 자리만 0, shape 그대로
+  - Affine: `dW (D, H) = x.T (D, N) @ dout (N, H)`, `db (H,) = dout`을 샘플 방향으로 합, `dx (N, D) = dout (N, H) @ W.T (H, D)`
+  - 스칼라로 보면 y = x·w + b에서 ∂L/∂w = dout·x, ∂L/∂b = dout·1, ∂L/∂x = dout·w. 행렬에서는 shape가 맞도록 `.T`가 붙는다
+  - b는 broadcast로 N개 샘플에 똑같이 더해졌으니, 기울기도 N개를 다 더한다 (평균 아님. 1/N은 Softmax backward에서 이미 나눴다)
+- 손으로 확인한 계산:
+  - Softmax: logits `zeros((2, 3))`, 정답 `[0, 1]` → `[[1/3 − 1, 1/3, 1/3], [1/3, 1/3 − 1, 1/3]] / 2`
+  - Affine (`test_affine.py` 예시): dW[0, 0] = 1·1 + 3·2 = 7, dx[0, 0] = 1·1 + 0·2 + (−1)·3 = −2, db = dout 세로 합 = `[3, 1, −1]`
+  - ReLU: x = `[[-1, 2], [0, -3]]`, dout = `[[5, 7], [9, 11]]` → dx = `[[0, 7], [0, 0]]`
+- 반드시 성립해야 하는 조건:
+  - `dW`, `db`, `dx`의 shape는 각각 `W`, `b`, `x`와 같다
+  - Softmax `dx`의 각 행 합은 0 (확률 합 1 − one-hot 합 1)
+  - gradient check: 수치 미분 (L(w + ε) − L(w − ε)) / 2ε 와 backward 값이 같아야 한다. 허용 1e-6, 직접 비교했더니 W1·b1·W2·b2 모두 상대 오차 1e-11 수준
+  - 테스트 출력의 "상대 오차 0.00e+00"은 차이가 `atol`(1e-8) 이하라 0으로 기록된 것이지, 완전히 같다는 뜻은 아니다
+  - ReLU backward는 `dout`을 제자리에서 바꾼다. 지금 네트워크에서는 `dout`이 매번 새로 만들어진 배열이라 문제없다
+
+### 막힌 지점과 해결 과정
+
+| 증상 | 원인 | 해결 |
+| --- | --- | --- |
+| Softmax backward에서 `(4,10)`과 `(4,)` broadcast 에러, N == C면 조용히 틀림 | `y_true`는 라벨 번호 `(N,)`이지 one-hot `(N, C)`가 아니다 | one-hot을 빼는 건 정답 칸에서만 1을 빼는 것과 같다 |
+| `y_prob[self.y_true] - 1`에서 IndexError | 인덱스를 하나만 주면 행 번호로 읽는다. `- 1`은 모든 칸에서 뺀다 | `[np.arange(N), y_true]`로 행과 열을 둘 다 지정 |
+
+### 참고 기록
+
+| 출처(교재·동료·AI) | 무엇을 참고했는가 | 내 코드에서 검증한 방법 |
+| --- | --- | --- |
+| AI (Claude Code) | Softmax + Cross Entropy 미분 유도, 스칼라 chain rule, 연쇄 대입, `.T` 사용법, gradient check의 `atol` 의미 | `test_softmax_with_loss.py` 11개, `test_relu.py` 5개, `test_affine.py` 8개 통과, `selfcheck --day 2` 26 passed, 바닥값 없이 직접 비교한 상대 오차 1e-11 |
+| 과제 docstring·테스트 | Softmax backward 순서 1~3, `test_affine.py`의 손계산 숫자, gradient check 실패 메시지의 범위 힌트 | 같은 숫자로 손계산한 값과 테스트 기대값 비교 |
