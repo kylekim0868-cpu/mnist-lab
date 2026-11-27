@@ -54,4 +54,7 @@ class ReLU:
         생각해 볼 점: 왜 forward의 mask를 그대로 재사용할 수 있을까요?
         """
         # TODO: forward에서 저장한 self.mask를 이용해 gradient가 흐를 위치만 남기세요.
-        raise NotImplementedError("ReLU.backward를 구현하세요.")
+
+        dout[self.mask] = 0
+
+        return dout
