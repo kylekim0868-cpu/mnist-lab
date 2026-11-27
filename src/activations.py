@@ -35,7 +35,13 @@ class ReLU:
         """
         # TODO 1: x <= 0 인 위치를 self.mask에 저장하세요. (backward에서 사용합니다)
         # TODO 2: x를 복사한 뒤 mask 위치를 0으로 만들어 반환하세요.
-        raise NotImplementedError("ReLU.forward를 구현하세요.")
+
+        self.mask = x <= 0
+
+        xc = x.copy()
+        xc[self.mask] = 0
+
+        return xc
 
     def backward(self, dout):
         """
@@ -48,4 +54,7 @@ class ReLU:
         생각해 볼 점: 왜 forward의 mask를 그대로 재사용할 수 있을까요?
         """
         # TODO: forward에서 저장한 self.mask를 이용해 gradient가 흐를 위치만 남기세요.
-        raise NotImplementedError("ReLU.backward를 구현하세요.")
+
+        dout[self.mask] = 0
+
+        return dout

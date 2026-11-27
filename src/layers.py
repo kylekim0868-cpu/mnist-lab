@@ -50,7 +50,10 @@ class Affine:
         """
         # TODO 1: backward에서 다시 써야 하므로 입력 x를 self.x에 저장하세요.
         # TODO 2: x @ W + b 를 계산해 반환하세요. b는 broadcasting으로 모든 행에 더해집니다.
-        raise NotImplementedError("Affine.forward를 구현하세요.")
+
+        self.x = x
+
+        return self.x @ self.W + self.b
 
     def backward(self, dout):
         """
@@ -71,7 +74,13 @@ class Affine:
         # TODO 2: self.db를 계산하세요. bias는 batch의 모든 샘플에 더해졌으므로
         #         gradient는 batch 방향으로 합쳐야 합니다.
         # TODO 3: dx를 계산해 반환하세요.
-        raise NotImplementedError("Affine.backward를 구현하세요.")
+
+        self.dW = np.dot(self.x.T, dout)
+        self.db = dout.sum(axis=0)
+
+        dx = np.dot(dout, self.W.T)
+
+        return dx
 
 
 class BatchNorm:
